@@ -36,7 +36,7 @@ char js14[] = ",\n\"SoC\": ";
 char js15[] = ",\n\"temp\": ";
 char js16[] = "},\n\"error\": {\n\"source\": ";
 char js17[] = ",\n\"message\": ";
-char js18[] = ",\n},\n\"extra temps\": [\n12,\n34,\n56\n]\n}"; 
+char js18[] = "\n},\n\"extra_temps\": [\n12,\n34,\n56\n]\n}\n"; 
 
 
 //variables for the datas of the boat
@@ -61,8 +61,8 @@ char charBatteryOut[]="40";
 char charBatterySoC[]="40";
 char charBatteryTemp[]="40";
 
-char charErrorSource[]="BMS";
-char charErrorMsg[]="Something went wrong";
+char charErrorSource[]="\"BMS\"";
+char charErrorMsg[]="\"Something went wrong\"";
 
 
 int data_length=strlen(js1)+strlen(js2)+strlen(js3)+strlen(js4)+strlen(js5)+strlen(js6)+strlen(js7)+strlen(js8)+strlen(js9)+strlen(js10)+strlen(js11)+strlen(js12)+
