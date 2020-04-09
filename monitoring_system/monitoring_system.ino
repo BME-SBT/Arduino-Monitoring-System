@@ -103,7 +103,7 @@ void setup() {
   TWBR = 24; // 400kHz I2C clock (200kHz if CPU is 8MHz)
   // initialize serial communication
   Serial.begin(115200);
-  mySerial.begin(9600);
+  mySerial.begin(115200);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
   
   while (!Serial); // wait for enumeration, others continue immediately
   // initialize device
