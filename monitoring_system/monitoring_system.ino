@@ -41,7 +41,7 @@ float AccX, AccY, AccZ;
 //interrupt detection routine
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
-  mpuInterrupt = true;
+ mpuInterrupt = true;
 }
 
 
@@ -54,10 +54,10 @@ void setup() {
   mySerial.begin(115200);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
 
   while (!Serial); // wait for enumeration, others continue immediately
-  // initialize device
+//   initialize device
   mpu.initialize();
 
-  devStatus = mpu.dmpInitialize();
+ devStatus = mpu.dmpInitialize();
 
 
   if (devStatus == 0) {
@@ -67,10 +67,10 @@ void setup() {
     attachInterrupt(0, dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
 
-    // set our DMP Ready flag so the main loop() function knows it's okay to use it
+//     set our DMP Ready flag so the main loop() function knows it's okay to use it
     dmpReady = true;
 
-    // get expected DMP packet size for later comparison
+//     get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();
   } else {
     // ERROR!
@@ -89,7 +89,7 @@ void loop() {
   }
 
   // reset interrupt flag and get INT_STATUS byte
-  mpuInterrupt = false;
+ mpuInterrupt = false;
   mpuIntStatus = mpu.getIntStatus();
 
   // get current FIFO count
@@ -131,41 +131,38 @@ void loop() {
 
 
     // Add values in the Json document
-    jsonData["tilt"]["x"] = ypr[1] * 180 / M_PI;
-    jsonData["tilt"]["y"] = ypr[2] * 180 / M_PI;
-    jsonData["tilt"]["z"] = ypr[0] * 180 / M_PI;
+    jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+    jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+    jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
-    jsonData["acceleration"]["x"] = AccX;
-    jsonData["acceleration"]["y"] = AccY;
-    jsonData["acceleration"]["z"] = AccZ;
+    jsonDoc["acceleration"]["x"] = AccX;
+    jsonDoc["acceleration"]["y"] = AccY;
+    jsonDoc["acceleration"]["z"] = AccZ;
 
-    jsonData["compass"]["x"] = 123;
-    jsonData["compass"]["y"] = 456;
-    jsonData["compass"]["z"] = 789;
+    jsonDoc["compass"]["x"] = 123;
+    jsonDoc["compass"]["y"] = 456;
+    jsonDoc["compass"]["z"] = 789;
 
-    jsonData["motor"]["RpM"] = 123;
-    jsonData["motor"]["temp"] = 123;
+    jsonDoc["motor"]["RpM"] = 123;
+    jsonDoc["motor"]["temp"] = 123;
 
-    jsonData["battery"]["in"] = 12;
-    jsonData["battery"]["out"] = 34;
-    jsonData["battery"]["SoC"] = 99;
-    jsonData["battery"]["temp"] = 40;
+    jsonDoc["battery"]["in"] = 12;
+    jsonDoc["battery"]["out"] = 34;
+    jsonDoc["battery"]["SoC"] = 99;
+    jsonDoc["battery"]["temp"] = 40;
 
-    jsonData["error"]["source"] = "BMS/controller/etc";
-    jsonData["error"]["message"] = "Something went wrong";
+    jsonDoc["error"]["source"] = "BMS/controller/etc";
+    jsonDoc["error"]["message"] = "Something went wrong";
 
     // Add an array.
-    JsonArray data = jsonData.createNestedArray("extra temps");
+    JsonArray data = jsonDoc.createNestedArray("extra temps");
     data.add(12);
     data.add(34);
     data.add(56);
 
     //Serialize Json to the serial port
-    serializeJson(jsonData, jsonData);
-
-    Serial.write(jsonData);
-
-    mySerial.write(data);
+    serializeJson(jsonDoc, Serial); //or mySerial
+   
 
     delay(1000);
   }
