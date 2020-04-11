@@ -1,4 +1,3 @@
-
 #include "I2Cdev.h"
 #include "ArduinoJson.h"
 #include "SoftwareSerial.h"
@@ -23,7 +22,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 const int jsonSize = JSON_ARRAY_SIZE(3) + 2 * JSON_OBJECT_SIZE(2) + 2 * JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(6);
 
 // Allocate the JSON document
-StaticJsonDocument<size> jsonDoc;
+StaticJsonDocument<jsonSize> jsonDoc;
 
 char jsonData[jsonSize];
 
@@ -39,15 +38,11 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 float AccX, AccY, AccZ;
 
 
-
-
 //interrupt detection routine
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
   mpuInterrupt = true;
 }
-
-
 
 
 void setup() {
@@ -82,67 +77,6 @@ void setup() {
   }
 
 }
-
-//float->string  converter function doesn't placed in the string.h library in arduino
-void ftoa(float f, char *str, uint8_t precision) {
-  uint8_t i, j, divisor = 1;
-  int8_t log_f;
-  int32_t int_digits = (int)f;             //store the integer digits
-  float decimals;
-  char s1[10];
-
-  memset(str, 0, sizeof(s1));
-  memset(s1, 0, 10);
-
-  if (f < 0) {                             //if a negative number
-    //str[0] = '-';                          //start the char array with '-', <- it doesn't need, it makes double -
-    f = abs(f);                            //store its positive absolute value
-  }
-  log_f = ceil(log10(f));                  //get number of digits before the decimal
-  if (log_f > 0) {                         //log value > 0 indicates a number > 1
-    if (log_f == precision) {              //if number of digits = significant figures
-      f += 0.5;                            //add 0.5 to round up decimals >= 0.5
-      itoa(f, s1, 10);                     //itoa converts the number to a char array
-      strcat(str, s1);                     //add to the number string
-    }
-    else if ((log_f - precision) > 0) {    //if more integer digits than significant digits
-      i = log_f - precision;               //count digits to discard
-      divisor = 10;
-      for (j = 0; j < i; j++) divisor *= 10;    //divisor isolates our desired integer digits
-      f /= divisor;                             //divide
-      f += 0.5;                            //round when converting to int
-      int_digits = (int)f;
-      int_digits *= divisor;               //and multiply back to the adjusted value
-      itoa(int_digits, s1, 10);
-      strcat(str, s1);
-    }
-    else {                                 //if more precision specified than integer digits,
-      itoa(int_digits, s1, 10);            //convert
-      strcat(str, s1);                     //and append
-    }
-  }
-
-  else {                                   //decimal fractions between 0 and 1: leading 0
-    s1[0] = '0';
-    strcat(str, s1);
-  }
-
-  if (log_f < precision) {                 //if precision exceeds number of integer digits,
-    decimals = f - (int)f;                 //get decimal value as float
-    strcat(str, ".");                      //append decimal point to char array
-
-    i = precision - log_f;                 //number of decimals to read
-    for (j = 0; j < i; j++) {              //for each,
-      decimals *= 10;                      //multiply decimals by 10
-      if (j == (i - 1)) decimals += 0.5;   //and if it's the last, add 0.5 to round it
-      itoa((int)decimals, s1, 10);         //convert as integer to character array
-      strcat(str, s1);                     //append to string
-      decimals -= (int)decimals;           //and remove, moving to the next
-    }
-  }
-}
-
-
 
 
 void loop() {
@@ -196,61 +130,43 @@ void loop() {
     AccZ = (Wire.read() << 8 | Wire.read()) / 1638.40; // Z-axis value
 
 
-    ftoa(AccX, charAccX, 5);
-    ftoa(AccY, charAccY, 5);
-    ftoa(AccZ, charAccZ, 5);
-
-
-    ypr[0] = 0;
-    ypr[1] = ypr[1] * 180 / M_PI;
-    ypr[2] = ypr[2] * 180 / M_PI;
-
-
-    ftoa(ypr[0], charTiltZ, 5);
-    ftoa(ypr[1], charTiltX, 5);
-    ftoa(ypr[2], charTiltY, 5);
-
     // Add values in the Json document
-    doc["tilt"]["x"] = ypr[1] * 180 / M_PI;
-    doc["tilt"]["y"] = ypr[2] * 180 / M_PI;
-    doc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+    jsonData["tilt"]["x"] = ypr[1] * 180 / M_PI;
+    jsonData["tilt"]["y"] = ypr[2] * 180 / M_PI;
+    jsonData["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
-    doc["acceleration"]["x"] = AccX;
-    doc["acceleration"]["y"] = AccY;
-    doc["acceleration"]["z"] = AccZ;
+    jsonData["acceleration"]["x"] = AccX;
+    jsonData["acceleration"]["y"] = AccY;
+    jsonData["acceleration"]["z"] = AccZ;
 
-    doc["compass"]["x"] = 123;
-    doc["compass"]["y"] = 456;
-    doc["compass"]["z"] = 789;
+    jsonData["compass"]["x"] = 123;
+    jsonData["compass"]["y"] = 456;
+    jsonData["compass"]["z"] = 789;
 
-    doc["motor"]["RpM"] = 123;
-    doc["motor"]["temp"] = 123;
+    jsonData["motor"]["RpM"] = 123;
+    jsonData["motor"]["temp"] = 123;
 
-    doc["battery"]["in"] = 12;
-    doc["battery"]["out"] = 34;
-    doc["battery"]["SoC"] = 99;
-    doc["battery"]["temp"] = 40;
+    jsonData["battery"]["in"] = 12;
+    jsonData["battery"]["out"] = 34;
+    jsonData["battery"]["SoC"] = 99;
+    jsonData["battery"]["temp"] = 40;
 
-    doc["error"]["source"] = "BMS/controller/etc";
-    doc["error"]["message"] = "Something went wrong";
+    jsonData["error"]["source"] = "BMS/controller/etc";
+    jsonData["error"]["message"] = "Something went wrong";
 
     // Add an array.
-    //
-    JsonArray data = doc.createNestedArray("extra temps");
+    JsonArray data = jsonData.createNestedArray("extra temps");
     data.add(12);
     data.add(34);
     data.add(56);
 
     //Serialize Json to the serial port
-    serializeJson(doc, jsonData);
+    serializeJson(jsonData, jsonData);
 
     Serial.write(jsonData);
 
-
-    delay(1000);
-
     mySerial.write(data);
 
-
+    delay(1000);
   }
 }
