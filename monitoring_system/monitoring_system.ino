@@ -51,20 +51,20 @@ void dmpDataReady() {
 
 
 void setup() {
-  // join I2C bus 
+  // join I2C bus
   Wire.begin();
   TWBR = 24; // 400kHz I2C clock (200kHz if CPU is 8MHz)
   // initialize serial communication
   Serial.begin(115200);
   mySerial.begin(115200);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
-  
+
   while (!Serial); // wait for enumeration, others continue immediately
   // initialize device
   mpu.initialize();
 
   devStatus = mpu.dmpInitialize();
 
-  
+
   if (devStatus == 0) {
     // turn on the DMP, now that it's ready
     mpu.setDMPEnabled(true);
@@ -91,10 +91,10 @@ void ftoa(float f, char *str, uint8_t precision) {
   float decimals;
   char s1[10];
 
-  memset(str, 0, sizeof(s1));  
+  memset(str, 0, sizeof(s1));
   memset(s1, 0, 10);
 
-  if (f < 0) {                             //if a negative number 
+  if (f < 0) {                             //if a negative number
     //str[0] = '-';                          //start the char array with '-', <- it doesn't need, it makes double -
     f = abs(f);                            //store its positive absolute value
   }
@@ -108,7 +108,7 @@ void ftoa(float f, char *str, uint8_t precision) {
     else if ((log_f - precision) > 0) {    //if more integer digits than significant digits
       i = log_f - precision;               //count digits to discard
       divisor = 10;
-      for (j = 0; j < i; j++) divisor *= 10;    //divisor isolates our desired integer digits 
+      for (j = 0; j < i; j++) divisor *= 10;    //divisor isolates our desired integer digits
       f /= divisor;                             //divide
       f += 0.5;                            //round when converting to int
       int_digits = (int)f;
@@ -134,7 +134,7 @@ void ftoa(float f, char *str, uint8_t precision) {
     i = precision - log_f;                 //number of decimals to read
     for (j = 0; j < i; j++) {              //for each,
       decimals *= 10;                      //multiply decimals by 10
-      if (j == (i-1)) decimals += 0.5;     //and if it's the last, add 0.5 to round it
+      if (j == (i - 1)) decimals += 0.5;   //and if it's the last, add 0.5 to round it
       itoa((int)decimals, s1, 10);         //convert as integer to character array
       strcat(str, s1);                     //append to string
       decimals -= (int)decimals;           //and remove, moving to the next
@@ -151,7 +151,7 @@ void loop() {
 
   // wait for MPU interrupt or extra packet(s) available
   while (!mpuInterrupt && fifoCount < packetSize) {
-    
+
   }
 
   // reset interrupt flag and get INT_STATUS byte
@@ -165,7 +165,7 @@ void loop() {
   if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
     // reset so we can continue cleanly
     mpu.resetFIFO();
-    
+
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
   } else if (mpuIntStatus & 0x02) {
     // wait for correct available data length, should be a VERY short wait
@@ -179,68 +179,68 @@ void loop() {
     fifoCount -= packetSize;
 
 
-  
+
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    
+
     Wire.beginTransmission(0x68);
     Wire.write(0x3B); // Start with register 0x3B (ACCEL_XOUT_H)
     Wire.endTransmission(false);
     Wire.requestFrom(0x68, 6, true); // Read 6 registers total, each axis value is stored in 2 registers
 
-    
+
     //For a range of +-2g, we need to divide the raw values by 1638.4, according to the datasheet
     AccX = (Wire.read() << 8 | Wire.read()) / 1638.40; // X-axis value
     AccY = (Wire.read() << 8 | Wire.read()) / 1638.40; // Y-axis value
     AccZ = (Wire.read() << 8 | Wire.read()) / 1638.40; // Z-axis value
- 
-
-   ftoa(AccX, charAccX, 5);
-   ftoa(AccY, charAccY, 5);
-   ftoa(AccZ, charAccZ, 5);
 
 
-   ypr[0]=0; 
-   ypr[1] = ypr[1] * 180 / M_PI;
-   ypr[2] = ypr[2] * 180 / M_PI;
+    ftoa(AccX, charAccX, 5);
+    ftoa(AccY, charAccY, 5);
+    ftoa(AccZ, charAccZ, 5);
 
 
-   ftoa(ypr[0], charTiltZ, 5);
-   ftoa(ypr[1], charTiltX, 5);
-   ftoa(ypr[2], charTiltY, 5);
-   
-// Add values in the Json document
-	doc["tilt"]["x"] = ypr[1] * 180 / M_PI;
-	doc["tilt"]["y"] = ypr[2] * 180 / M_PI;
-	doc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+    ypr[0] = 0;
+    ypr[1] = ypr[1] * 180 / M_PI;
+    ypr[2] = ypr[2] * 180 / M_PI;
 
-	doc["acceleration"]["x"] = AccX;
-	doc["acceleration"]["y"] = AccY;
-	doc["acceleration"]["z"] = AccZ;
 
-	doc["compass"]["x"] = 123;
-	doc["compass"]["y"] = 456;
-	doc["compass"]["z"] = 789;
+    ftoa(ypr[0], charTiltZ, 5);
+    ftoa(ypr[1], charTiltX, 5);
+    ftoa(ypr[2], charTiltY, 5);
 
-	doc["motor"]["RpM"] = 123;
-	doc["motor"]["temp"] = 123;
+    // Add values in the Json document
+    doc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+    doc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+    doc["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
-	doc["battery"]["in"] = 12;
-	doc["battery"]["out"] = 34;
-	doc["battery"]["SoC"] = 99;
-	doc["battery"]["temp"] = 40;
+    doc["acceleration"]["x"] = AccX;
+    doc["acceleration"]["y"] = AccY;
+    doc["acceleration"]["z"] = AccZ;
 
-	doc["error"]["source"] = "BMS/controller/etc";
-	doc["error"]["message"] = "Something went wrong";
+    doc["compass"]["x"] = 123;
+    doc["compass"]["y"] = 456;
+    doc["compass"]["z"] = 789;
 
-	// Add an array.
-	//
-	JsonArray data = doc.createNestedArray("extra temps");
-	data.add(12);
-	data.add(34);
-	data.add(56);
-         
+    doc["motor"]["RpM"] = 123;
+    doc["motor"]["temp"] = 123;
+
+    doc["battery"]["in"] = 12;
+    doc["battery"]["out"] = 34;
+    doc["battery"]["SoC"] = 99;
+    doc["battery"]["temp"] = 40;
+
+    doc["error"]["source"] = "BMS/controller/etc";
+    doc["error"]["message"] = "Something went wrong";
+
+    // Add an array.
+    //
+    JsonArray data = doc.createNestedArray("extra temps");
+    data.add(12);
+    data.add(34);
+    data.add(56);
+
     //Serialize Json to the serial port
     serializeJson(doc, jsonData);
 
@@ -250,7 +250,7 @@ void loop() {
     delay(1000);
 
     mySerial.write(data);
-    
-   
- }
+
+
+  }
 }
