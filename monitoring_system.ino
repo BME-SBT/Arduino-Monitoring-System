@@ -18,61 +18,14 @@ uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
 uint8_t fifoBuffer[64]; // FIFO storage buffer
 
-//json elements ( based on drive file)
-char js1[] = "{\n\"tilt\": {\n\"x\": ";
-char js2[] = ",\n\"y\": ";
-char js3[] = ",\n\"z\": ";
-char js4[] = "},\n\"acceleration\": {\n\"x\": "; 
-char js5[] = ",\n\"y\": ";   
-char js6[] = ",\n\"z\": ";
-char js7[] = "},\n\"compass\": {\n\"x\": ";
-char js8[] = ",\n\"y\": ";
-char js9[] = ",\n\"z\": ";
-char js10[] = "},\n\"motor\": {\n\"RpM\": ";
-char js11[] = ",\n\"temp\": ";
-char js12[] = "},\n\"battery\": {\n\"in\": ";
-char js13[] = ",\n\"out\": ";
-char js14[] = ",\n\"SoC\": ";
-char js15[] = ",\n\"temp\": ";
-char js16[] = "},\n\"error\": {\n\"source\": ";
-char js17[] = ",\n\"message\": ";
-char js18[] = ",\n},\n\"extra temps\": [\n12,\n34,\n56\n]\n}"; 
+// Calculate the size of our Json object
+// Help: https://arduinojson.org/v6/assistant/
+const int jsonSize = JSON_ARRAY_SIZE(3) + 2 * JSON_OBJECT_SIZE(2) + 2 * JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(6);
 
+// Allocate the JSON document
+StaticJsonDocument<size> jsonDoc;
 
-//variables for the datas of the boat
-
-char charTiltX[10];
-char charTiltY[10];
-char charTiltZ[10];
-
-char charAccX[10];
-char charAccY[10];
-char charAccZ[10];
-
-char charCompX[]="123";
-char charCompY[]="456";
-char charCompZ[]="789";
-
-char charMotorRPM[]="123";
-char charMotorTemp[]="40";
-
-char charBatteryIn[]="40";
-char charBatteryOut[]="40";
-char charBatterySoC[]="40";
-char charBatteryTemp[]="40";
-
-char charErrorSource[]="BMS";
-char charErrorMsg[]="Something went wrong";
-
-
-int data_length=strlen(js1)+strlen(js2)+strlen(js3)+strlen(js4)+strlen(js5)+strlen(js6)+strlen(js7)+strlen(js8)+strlen(js9)+strlen(js10)+strlen(js11)+strlen(js12)+
-strlen(js13)+strlen(js14)+strlen(js15)+strlen(js16)+strlen(js17)+strlen(js18)+strlen(charTiltX)+strlen(charTiltY)
-+strlen(charTiltZ)+strlen(charAccX)+strlen(charAccY)+strlen(charAccZ)+strlen(charCompX)+strlen(charCompY)+strlen(charCompZ)+strlen(charMotorRPM)+strlen(charMotorTemp)
-+strlen(charBatteryIn)+strlen(charBatteryOut)+strlen(charBatterySoC)+strlen(charBatteryTemp)+strlen(charErrorSource)+strlen(charErrorMsg);
-
-
-char * data=malloc(data_length*sizeof(char));
-
+char jsonData[jsonSize];
 
 
 // orientation/motion vars
@@ -257,44 +210,42 @@ void loop() {
    ftoa(ypr[1], charTiltX, 5);
    ftoa(ypr[2], charTiltY, 5);
    
-data[0]='\0';
+// Add values in the Json document
+	doc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+	doc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+	doc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+	
+	doc["acceleration"]["x"] = AccX;
+	doc["acceleration"]["y"] = AccY;
+	doc["acceleration"]["z"] = AccZ;
 
-  data = strcat(data,js1);
-  data = strcat(data,charTiltX);
-  data = strcat(data,js2);
-  data = strcat(data,charTiltY);
-  data = strcat(data,js3);
-  data = strcat(data,charTiltZ);
-  data = strcat(data,js4);
-  data = strcat(data,charAccX);
-  data = strcat(data,js5);
-  data = strcat(data,charAccY);
-  data = strcat(data,js6);
-  data = strcat(data,charAccZ);
-  data = strcat(data,js7);
-  data = strcat(data,charCompX);
-  data = strcat(data,js8);
-  data = strcat(data,charCompY);
-  data = strcat(data,js9);
-  data = strcat(data,charCompZ);
-  data = strcat(data,js10);
-  data = strcat(data,charMotorRPM);
-  data = strcat(data,js11);
-  data = strcat(data,charMotorTemp);
-  data = strcat(data,js12);
-  data = strcat(data,charBatteryIn);
-  data = strcat(data,js13);
-  data = strcat(data,charBatteryOut);
-  data = strcat(data,js14);
-  data = strcat(data,charBatterySoC);
-  data = strcat(data,js15);
-  data = strcat(data,charBatteryTemp);
-  data = strcat(data,js16);
-  data = strcat(data,charErrorSource);
-  data = strcat(data,js17);
-  data = strcat(data,charErrorMsg);
-  data = strcat(data,js18);
+	doc["compass"]["x"] = 123;
+	doc["compass"]["y"] = 456;
+	doc["compass"]["z"] = 789;
+
+	doc["motor"]["RpM"] = 123;
+	doc["motor"]["temp"] = 123;
+
+	doc["battery"]["in"] = 12;
+	doc["battery"]["out"] = 34;
+	doc["battery"]["SoC"] = 99;
+	doc["battery"]["temp"] = 40;
+
+	doc["error"]["source"] = "BMS/controller/etc";
+	doc["error"]["message"] = "Something went wrong";
+
+	// Add an array.
+	//
+	JsonArray data = doc.createNestedArray("extra temps");
+	data.add(12);
+	data.add(34);
+	data.add(56);
          
+    //Serialize Json to the serial port
+    serializeJson(doc, jsonData);
+
+    Serial.write(jsonData);
+    mySerial.write(jsonData);
    
 //--------------------------
    //
