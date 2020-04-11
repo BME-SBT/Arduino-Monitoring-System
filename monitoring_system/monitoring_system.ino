@@ -161,7 +161,7 @@ void loop() {
     data.add(56);
 
     //Serialize Json to the serial port
-    serializeJson(jsonDoc, Serial); //or mySerial
+    serializeJson(jsonDoc, mySerial); //or mySerial
    
 
     delay(1000);
