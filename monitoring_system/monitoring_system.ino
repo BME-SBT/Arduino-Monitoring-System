@@ -4,7 +4,8 @@
 #include "string.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "Wire.h"
-
+#include "string.h"
+#include "mcp_can.h"
 SoftwareSerial mySerial(5, 6);
 
 MPU6050 mpu;
@@ -17,6 +18,9 @@ uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
 uint8_t fifoBuffer[64]; // FIFO storage buffer
 
+volatile int sensorInterrupt =false;
+volatile int CANInterrupt = false;
+int CAN_Init =0;
 // Calculate the size of our Json object
 // Help: https://arduinojson.org/v6/assistant/
 const int jsonSize = JSON_ARRAY_SIZE(3) + 2 * JSON_OBJECT_SIZE(2) + 2 * JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(6);
@@ -25,8 +29,8 @@ const int jsonSize = JSON_ARRAY_SIZE(3) + 2 * JSON_OBJECT_SIZE(2) + 2 * JSON_OBJ
 StaticJsonDocument<jsonSize> jsonDoc;
 
 char jsonData[jsonSize];
-
-
+String CAN_status;
+String Sensor_status;
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorInt16 aa;         // [x, y, z]            accel sensor measurements
@@ -35,9 +39,21 @@ VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measure
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
+
+  unsigned const char CAN_len = 0;
+  unsigned char CAN_buf[8];
+
+    
+const int spiCSPin = 53;
+
+
+MCP_CAN CAN(spiCSPin);
+
+
 float AccX, AccY, AccZ;
 
-
+unsigned long time;
 //interrupt detection routine
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
@@ -50,15 +66,39 @@ void setup() {
   Wire.begin();
   TWBR = 24; // 400kHz I2C clock (200kHz if CPU is 8MHz)
   // initialize serial communication
+
+  //**********SENSOR INIT*******************
   Serial.begin(115200);
+
   mySerial.begin(115200);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
 
   while (!Serial); // wait for enumeration, others continue immediately
 //   initialize device
+
+//Test if snesor is OK
+
+time = millis();
+while((mpu.testConnection()!=true)&& (sensorInterrupt==false))
+{
+  if(time > 5000)
+  {
+    sensorInterrupt = Serial.read();
+  }
+ Serial.println("Sensor init failed");
+}
+
+
+if(sensorInterrupt ==false)
+{
+  Sensor_status =String("Sensor init OK");
+}
+if(sensorInterrupt ==true)
+{
+  Sensor_status =String("Sensor init failed");
+  }
   mpu.initialize();
 
  devStatus = mpu.dmpInitialize();
-
 
   if (devStatus == 0) {
     // turn on the DMP, now that it's ready
@@ -76,17 +116,29 @@ void setup() {
     // ERROR!
   }
 
+  //**********SENSOR INIT*******************
+
+    //**********CAN INIT*******************
+    while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_8MHz))
+   {
+        //TODO error handling
+        delay(100);
+    }
+  
+ //**********CAN INIT*******************
 }
 
 
 void loop() {
+
+  //********************SENSOR READ******************************
+  
   // if programming failed, don't try to do anything
   if (!dmpReady) return;
-
   // wait for MPU interrupt or extra packet(s) available
-  while (!mpuInterrupt && fifoCount < packetSize) {
+  //while (!mpuInterrupt && fifoCount < packetSize) {
 
-  }
+ // }
 
   // reset interrupt flag and get INT_STATUS byte
  mpuInterrupt = false;
@@ -129,9 +181,17 @@ void loop() {
     AccY = (Wire.read() << 8 | Wire.read()) / 1638.40; // Y-axis value
     AccZ = (Wire.read() << 8 | Wire.read()) / 1638.40; // Z-axis value
 
+//***************CAN READ***************************
 
+ if(CAN_MSGAVAIL == CAN.checkReceive())
+    {
+        CAN.readMsgBuf(&CAN_len, CAN_buf);
+        unsigned long canId = CAN.getCanId();  
+    }
+
+//***************CREATE JSON************************
     // Add values in the Json document
-    jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+ jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
     jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
     jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
@@ -146,14 +206,13 @@ void loop() {
     jsonDoc["motor"]["RpM"] = 123;
     jsonDoc["motor"]["temp"] = 123;
 
-    jsonDoc["battery"]["in"] = 12;
-    jsonDoc["battery"]["out"] = 34;
-    jsonDoc["battery"]["SoC"] = 99;
-    jsonDoc["battery"]["temp"] = 40;
+    jsonDoc["battery"]["Package current"] = CAN_buf[1]; //TODO
+    jsonDoc["battery"]["Package voltage"] = CAN_buf[2];
+    jsonDoc["battery"]["Package SoC"] = CAN_buf[3];
+    jsonDoc["battery"]["Temperature"] = CAN_buf[4];
 
-    jsonDoc["error"]["source"] = "BMS/controller/etc";
+    jsonDoc["error"]["source"] = "BMS";
     jsonDoc["error"]["message"] = "Something went wrong";
-
     // Add an array.
     JsonArray data = jsonDoc.createNestedArray("extra temps");
     data.add(12);
@@ -161,9 +220,16 @@ void loop() {
     data.add(56);
 
     //Serialize Json to the serial port
+<<<<<<< Updated upstream
     serializeJson(jsonDoc, mySerial); //or mySerial
+=======
+    
+    if(Serial.read() == '5') //FOR TESTING
+    {
+      serializeJson(jsonDoc, Serial); //or mySerial
+>>>>>>> Stashed changes
    
-
+    }
     delay(1000);
   }
 }
