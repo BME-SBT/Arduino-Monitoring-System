@@ -400,11 +400,11 @@ void loop() {
 
 
 
-    //jsonDoc["compass"]["x"] = 123;
+    jsonDoc["compass"]["x"] = 123;
 
-    //jsonDoc["compass"]["y"] = 456;
+    jsonDoc["compass"]["y"] = 456;
 
-   // jsonDoc["compass"]["z"] = 789;
+    jsonDoc["compass"]["z"] = 789;
 
 
 
@@ -413,16 +413,20 @@ void loop() {
    // jsonDoc["battery"]["BMS2"] = CAN_buf[2];
 
      int SoC  = CAN_buf[0] >>1;
+     
      unsigned int PackVolt = 0;
      PackVolt |= CAN_buf[1]<<8;
      PackVolt |= CAN_buf[2];
      float floatPackVoltage = PackVolt/1000;
+     
      int temperature = CAN_buf[4];
+     
      unsigned int PackCurr = 0;
      PackCurr |= CAN_buf[5]<<8;
      PackCurr |= CAN_buf[6];
+     float floatPackCurrent = PackCurr/1000;
 
-    jsonDoc["battery"]["Package current"] = PackCurr; //TODO
+    jsonDoc["battery"]["Package current"] = floatPackCurrent; //TODO
 
     jsonDoc["battery"]["Package voltage"] = floatPackVoltage;
 
