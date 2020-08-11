@@ -81,16 +81,18 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 
-
-
+ int SoC  = 0;
+ unsigned int PackVolt = 0;
+  float floatPackVoltage = 0;
 
   unsigned const char CAN_len = 0;
 
   unsigned char CAN_buf[8];
 
+ int temperature = 0;
+  unsigned int PackCurr = 0;
 
-
-    
+     float floatPackCurrent = 0;
 
 const int spiCSPin = 53;
 
@@ -412,19 +414,18 @@ void loop() {
 
    // jsonDoc["battery"]["BMS2"] = CAN_buf[2];
 
-     int SoC  = CAN_buf[0] >>1;
+     SoC  = CAN_buf[0] >>1;
      
-     unsigned int PackVolt = 0;
      PackVolt |= CAN_buf[1]<<8;
      PackVolt |= CAN_buf[2];
-     float floatPackVoltage = PackVolt/1000;
+     floatPackVoltage = PackVolt/1000;
      
-     int temperature = CAN_buf[4];
+     temperature = CAN_buf[4];
      
-     unsigned int PackCurr = 0;
+    
      PackCurr |= CAN_buf[5]<<8;
      PackCurr |= CAN_buf[6];
-     float floatPackCurrent = PackCurr/1000;
+     floatPackCurrent = PackCurr/1000;
 
     jsonDoc["battery"]["Package current"] = floatPackCurrent; //TODO
 
