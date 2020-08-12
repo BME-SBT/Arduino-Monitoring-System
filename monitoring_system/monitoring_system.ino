@@ -380,41 +380,7 @@ void loop() {
 
     }
 
-
-
-//***************CREATE JSON************************
-
-    // Add values in the Json document
-
- jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
-
-    jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
-
-    jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
-
-
-
-    jsonDoc["acceleration"]["x"] = AccX;
-
-    jsonDoc["acceleration"]["y"] = AccY;
-
-    jsonDoc["acceleration"]["z"] = AccZ;
-
-
-
-    jsonDoc["compass"]["x"] = 123;
-
-    jsonDoc["compass"]["y"] = 456;
-
-    jsonDoc["compass"]["z"] = 789;
-
-
-
-   // jsonDoc["battery"]["BMS"] = CAN_buf[0];
-
-   // jsonDoc["battery"]["BMS2"] = CAN_buf[2];
-
-     SoC  = CAN_buf[0] >>1;
+ SoC  = CAN_buf[0] >>1;
      
      PackVolt |= CAN_buf[1]<<8;
      PackVolt |= CAN_buf[2];
@@ -427,30 +393,41 @@ void loop() {
      PackCurr |= CAN_buf[6];
      floatPackCurrent = PackCurr/1000;
 
-    jsonDoc["battery"]["Package current"] = floatPackCurrent; //TODO
+//***************CREATE JSON************************
+
+    // Add values in the Json document
+    
+ // Add values in the Json document
+    jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+    jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+    jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+
+    jsonDoc["acceleration"]["x"] = AccX;
+    jsonDoc["acceleration"]["y"] = AccY;
+    jsonDoc["acceleration"]["z"] = AccZ;
+
+    jsonDoc["compass"]["x"] = 123;
+    jsonDoc["compass"]["y"] = 456;
+    jsonDoc["compass"]["z"] = 789;
+
+    jsonDoc["motor"]["RpM"] = 123;
+    jsonDoc["motor"]["temp"] = 123;
+
+   jsonDoc["battery"]["Package current"] = floatPackCurrent; //TODO
 
     jsonDoc["battery"]["Package voltage"] = floatPackVoltage;
 
     jsonDoc["battery"]["Package SoC"] = SoC;
 
     jsonDoc["battery"]["Temperature"] = temperature;
-
-
-
     jsonDoc["error"]["source"] = "";
-
     jsonDoc["error"]["message"] = "";
 
     // Add an array.
-
     JsonArray data = jsonDoc.createNestedArray("extra temps");
-
     data.add(12);
-
     data.add(34);
-
     data.add(56);
-
 
 
     //Serialize Json to the serial port
