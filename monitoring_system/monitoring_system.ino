@@ -26,7 +26,6 @@ static uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 static uint16_t fifoCount;     // count of all bytes currently in FIFO
 static uint8_t fifoBuffer[64]; // FIFO storage buffer
 
-
 // orientation/motion vars
 static Quaternion q;           // [w, x, y, z]         quaternion container
 static VectorInt16 aa;         // [x, y, z]            accel sensor measurements
@@ -47,7 +46,7 @@ static float floPackVoltage = 0;
 static const uint8_t u8CAN_len = 0;
 static uint8_t CAN_buf[8];
 static uint8_t u8Temperature = 0;
-static uint16_t u16PackCurr = 0;
+static int16_t  s16PackCurr = 0;
 static float floPackCurrent = 0;
 
 static MCP_CAN CAN(SPI_CS_PIN);
@@ -61,11 +60,11 @@ static char jsonData[jsonSize];
 StaticJsonDocument<jsonSize> jsonDoc;
 
 //********static function definitions*****************
-static void vSensorInit();
-static void vCANInit();
-static void vSensorRead();
-static void vCANRead();
-static void vSendDatasBLE();
+static void vSensorInit(void);
+static void vCANInit(void);
+static bool boSensorRead(void);
+static void vCANRead(void);
+static void vSendDatasBLE(void);
 
 //interrupt detection routine
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
@@ -74,74 +73,72 @@ void dmpDataReady()
 {
  mpuInterrupt = true;
 }
-
-
-static void vSensorInit()
+static void vSensorInit(void)
 {
-
-  bool boRetVal = true;
-  while((mpu.testConnection()!=true))
+  // join I2C bus
+  Wire.begin();
+  
+  TWBR = I2C_SPEED; // 400kHz I2C clock (200kHz if CPU is 8MHz)
+  
+//Test if snesor is OK
+while((mpu.testConnection()!=true))
 {
- //WAIT
+ Serial.println("Sensor init failed");
 }
   mpu.initialize();
  devStatus = mpu.dmpInitialize();
   if (devStatus == 0)
-  {  
+  {
     // turn on the DMP, now that it's ready
     mpu.setDMPEnabled(true);
     attachInterrupt(0, dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
-    
-//  set our DMP Ready flag so the main loop() function knows it's okay to use it
+
+
+  //set our DMP Ready flag so the main loop() function knows it's okay to use it
     dmpReady = true;
-//  get expected DMP packet size for later comparison
+
+ //get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();
+
   }
   else
   {
-    boRetVal = false;
+
+    // ERROR!
+
   }
 }
 
-static void vCANInit()
+static void vCANInit(void)
+
 {
-   
   while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_8MHz))
-  {
-       //WAIT 
-  }
+   {
+          
+   }
+  
 }
 
 void setup()
 {
-  bool boSensorErr;
-  bool boCANErr;
-  
-  // join I2C bus
-  Wire.begin();
-  TWBR = I2C_SPEED; // 400kHz I2C clock (200kHz if CPU is 8MHz)
-  
- //initialize serial communication
   Serial.begin(SERIAL_BAUD_RATE);
-  mySerial.begin(SERIAL_BAUD_RATE);
-  
+  mySerial.begin(SERIAL_BAUD_RATE);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
+
   while (!Serial)
   {
     // wait for enumeration, others continue immediately
   }
+
+  vSensorInit();
+  //vCANInit();
   
- vSensorInit();
- vCANInit();
 
 }
 
-
-static void vSensorRead()
+static bool boSensorRead(void)
 {
-  floAccX = 0;
-  floAccY = 0;
-  floAccZ = 0;
+ bool boSensReadAcc = false;
   
   // if programming failed, don't try to do anything
   if (!dmpReady)
@@ -150,129 +147,131 @@ static void vSensorRead()
   }
 
   // wait for MPU interrupt or extra packet(s) available
-  //while (!mpuInterrupt && fifoCount < packetSize) {
-
-
-
- // }
-
-
-
   // reset interrupt flag and get INT_STATUS byte
-   mpuInterrupt = false;
-   mpuIntStatus = mpu.getIntStatus();
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
 
   // get current FIFO count
-   fifoCount = mpu.getFIFOCount();
-
+  fifoCount = mpu.getFIFOCount();
+  
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & 0x10) || fifoCount == 1024)
   {
     // reset so we can continue cleanly
+    mpu.resetFIFO();
 
-     mpu.resetFIFO();
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
   }
   else if (mpuIntStatus & 0x02)
   {
     // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize)
+    {
+      fifoCount = mpu.getFIFOCount();
+    }
 
-    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-    
     // read a packet from FIFO
     mpu.getFIFOBytes(fifoBuffer, packetSize);
 
     // track FIFO count here in case there is > 1 packet available
     // (this lets us immediately read more without waiting for an interrupt)
-
     fifoCount -= packetSize;
+    
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
+    
     Wire.beginTransmission(0x68);
     Wire.write(0x3B); // Start with register 0x3B (ACCEL_XOUT_H)
     Wire.endTransmission(false);
     Wire.requestFrom(0x68, 6, true); // Read 6 registers total, each axis value is stored in 2 registers
+
     //For a range of +-2g, we need to divide the raw values by 1638.4, according to the datasheet
     floAccX = (Wire.read() << 8 | Wire.read()) / 1638.40; // X-axis value
     floAccY = (Wire.read() << 8 | Wire.read()) / 1638.40; // Y-axis value
     floAccZ = (Wire.read() << 8 | Wire.read()) / 1638.40; // Z-axis value
+
+   boSensReadAcc = true;
+  }
+
+  return boSensReadAcc;
 }
 
-}
-
-
-static void vCANRead()
+static void vCANRead(void)
 {
-  
   if(CAN_MSGAVAIL == CAN.checkReceive())
+
     {
-       CAN.readMsgBuf(&u8CAN_len, CAN_buf);
-    //  unsigned long canId = CAN.getCanId();  
-	
-	  u8SoC = 0;
+      u8SoC = 0;
       u16PackVolt = 0;
       u8Temperature = 0;
-      u16PackCurr = 0;
-	  
-      u8SoC  = CAN_buf[0] >> 1;
+      s16PackCurr = 0;
+      CAN.readMsgBuf(&u8CAN_len, CAN_buf);
+
+      // unsigned long canId = CAN.getCanId();  
+
+      u8SoC  = CAN_buf[0] >>1;
      
-      u16PackVolt |= (uint16_t) CAN_buf[1] << 8;
-      u16PackVolt |= (uint16_t) CAN_buf[2];
-      floPackVoltage = u16PackVolt/1000;
+     u16PackVolt |= CAN_buf[1]<<8;
+     u16PackVolt |= CAN_buf[2];
+     floPackVoltage = u16PackVolt/1000;
      
-       u8Temperature = CAN_buf[4];
-     
-       u16PackCurr |= (uint16_t)CAN_buf[5] << 8;
-       u16PackCurr |= (uint16_t)CAN_buf[6];
-       floPackCurrent = u16PackCurr/1000;      
+     u8Temperature = CAN_buf[4];  
+    
+      s16PackCurr |= CAN_buf[5]<<8;
+      s16PackCurr |= CAN_buf[6];
+     floPackCurrent =  s16PackCurr/1000;
+
     }
 }
 
-
-static void vSendBLE()
+static void vSendDatasBLE(void)
 {
-  // Add values in the Json document  
-  //convert to degree 
-   jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
-   jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
-   jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+  // Add values in the Json document
+    jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+    jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+    jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
-   jsonDoc["acceleration"]["x"] = floAccX;
-   jsonDoc["acceleration"]["y"] = floAccY;
-   jsonDoc["acceleration"]["z"] = floAccZ;
+    jsonDoc["acceleration"]["x"] = floAccX;
+    jsonDoc["acceleration"]["y"] = floAccY;
+    jsonDoc["acceleration"]["z"] = floAccZ;
 
-   jsonDoc["compass"]["x"] = 123; //unused
-   jsonDoc["compass"]["y"] = 456; //unused
-   jsonDoc["compass"]["z"] = 789; //unused
-    
-   jsonDoc["motor"]["RpM"] = 123; //unused
-   jsonDoc["motor"]["temp"] = 123; //unused
+    //jsonDoc["compass"]["x"] = 123;//unused
+   // jsonDoc["compass"]["y"] = 456;//unused
+   // jsonDoc["compass"]["z"] = 789;//unused
 
-   jsonDoc["battery"]["Package current"] = floPackCurrent;
-   jsonDoc["battery"]["Package voltage"] = floPackVoltage;
-   jsonDoc["battery"]["Package SoC"] = u8SoC;
-   jsonDoc["battery"]["Temperature"] = u8Temperature;
+    //jsonDoc["motor"]["RpM"] = 123;//unused
+   // jsonDoc["motor"]["temp"] = 123;//unused
+
+  // jsonDoc["battery"]["Package current"] = floatPackCurrent; //unused
+  //  jsonDoc["battery"]["Package voltage"] = floatPackVoltage;//unused
+  //  jsonDoc["battery"]["Package SoC"] = SoC;//unused
+   // jsonDoc["battery"]["Temperature"] = temperature;//unused
+   // jsonDoc["error"]["source"] = "";//unused
+    //jsonDoc["error"]["message"] = "";//unused
+
+    // Add an array.
+   // JsonArray data = jsonDoc.createNestedArray("extra temps");//unused
+   // data.add(12);//unused
+   // data.add(34);//unused
+   // data.add(56);//unused
    
-   jsonDoc["error"]["source"] = ""; //unused
-   jsonDoc["error"]["message"] = ""; //unused
-
-   // Add an array.
-   JsonArray data = jsonDoc.createNestedArray("extra temps");//unused
-   data.add(12);//unused
-   data.add(34);//unused
-   data.add(56);//unused
-
-
-   //Serialize Json to the serial port
-   serializeJson(jsonDoc, Serial); //or mySerial
+    //Serialize Json to the serial port
+    serializeJson(jsonDoc, Serial); //or mySerial
 }
 
 void loop()
- {
-   vSensorRead();
-   vCANRead();
-   vSendBLE();
-  delay(1000);
+{
+
+  if(boSensorRead() == true)
+  {
+
+  //vCANRead();
+  vSendDatasBLE();
+   Serial.println();
+   delay(1000); 
+    
+  }
+
+
 }
