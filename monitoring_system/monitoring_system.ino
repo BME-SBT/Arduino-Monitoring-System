@@ -7,13 +7,13 @@
 #include "string.h"
 #include "mcp_can.h"
 
-#define SPI_CS_PIN (53)
-#define I2C_SPEED (24); // 400kHz I2C clock (200kHz if CPU is 8MHz)
-#define SERIAL_BAUD_RATE (115200)
-#define SW_SERIAL_RX (5) 
-#define SW_SERIAL_TX (6) 
+#define SPI_CS_PIN ( 53 )
+#define I2C_SPEED ( 24 ); // 400kHz I2C clock (200kHz if CPU is 8MHz)
+#define SERIAL_BAUD_RATE ( 115200 )
+#define SW_SERIAL_RX ( 5 )
+#define SW_SERIAL_TX ( 6 )
 
-SoftwareSerial mySerial(SW_SERIAL_RX, SW_SERIAL_TX);
+SoftwareSerial BLE_Serial(SW_SERIAL_RX, SW_SERIAL_TX); //for BLE modul
 
 //********static variables******************
 
@@ -39,18 +39,38 @@ static float floAccX;
 static float floAccY;
 static float floAccZ;
 
+//CAN datas
+static byte len = 0;
+
 //BMS values
-static uint8_t u8SoC  = 0;
-static uint16_t u16PackVolt = 0;
-static float floPackVoltage = 0;
-static const uint8_t u8CAN_len = 0;
-static uint8_t CAN_buf[8];
-static uint8_t u8Temperature = 0;
-static int16_t  s16PackCurr = 0;
-static float floPackCurrent = 0;
+//static uint8_t u8SoC  = 0;
+//static uint16_t u16PackVolt = 0;
+//static float floPackVoltage = 0;
+//static uint8_t u8Temperature = 0;
+//static int16_t  s16PackCurr = 0;
+//static float floPackCurrent = 0;
 
 static MCP_CAN CAN(SPI_CS_PIN);
- 
+
+typedef union
+{
+     struct
+    { 
+         uint16_t u16LowCellVoltage; //6-7.frame
+         uint16_t u16HighCellVoltage; //4-5.frame
+         uint16_t u16PackCurrent;    //2-3.frame
+         uint8_t u8HighTemp;         //1.frame             
+         uint8_t u8SoC;              //0.frame
+
+    } cFRAMES;
+
+     uint64_t u64Message; // 0.-7.frame
+
+} uMESSAGE;
+
+
+static uMESSAGE uCAN_Msg;
+static uint8_t bufin[8];
 //JSON vars
 // Calculate the size of our Json object
 // Help: https://arduinojson.org/v6/assistant/
@@ -71,22 +91,22 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 
 void dmpDataReady()
 {
- mpuInterrupt = true;
+  mpuInterrupt = true;
 }
 static void vSensorInit(void)
 {
   // join I2C bus
   Wire.begin();
-  
+
   TWBR = I2C_SPEED; // 400kHz I2C clock (200kHz if CPU is 8MHz)
-  
-//Test if snesor is OK
-while((mpu.testConnection()!=true))
-{
- Serial.println("Sensor init failed");
-}
+
+  //Test if snesor is OK
+  while ((mpu.testConnection() != true))
+  {
+    Serial.println("Sensor init failed");
+  }
   mpu.initialize();
- devStatus = mpu.dmpInitialize();
+  devStatus = mpu.dmpInitialize();
   if (devStatus == 0)
   {
     // turn on the DMP, now that it's ready
@@ -95,10 +115,10 @@ while((mpu.testConnection()!=true))
     mpuIntStatus = mpu.getIntStatus();
 
 
-  //set our DMP Ready flag so the main loop() function knows it's okay to use it
+    //set our DMP Ready flag so the main loop() function knows it's okay to use it
     dmpReady = true;
 
- //get expected DMP packet size for later comparison
+    //get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();
 
   }
@@ -114,16 +134,16 @@ static void vCANInit(void)
 
 {
   while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_8MHz))
-   {
-          
-   }
-  
+  {
+
+  }
+
 }
 
 void setup()
 {
   Serial.begin(SERIAL_BAUD_RATE);
-  mySerial.begin(SERIAL_BAUD_RATE);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
+  //BLE_Serial.begin(SERIAL_BAUD_RATE);  //megoldottam hogy a nálam lévő modul 115200-on menjen ezért átírtam
 
   while (!Serial)
   {
@@ -131,15 +151,13 @@ void setup()
   }
 
   vSensorInit();
-  //vCANInit();
-  
-
+  vCANInit();
 }
 
 static bool boSensorRead(void)
 {
- bool boSensReadAcc = false;
-  
+  bool boSensReadAcc = false;
+
   // if programming failed, don't try to do anything
   if (!dmpReady)
   {
@@ -153,7 +171,7 @@ static bool boSensorRead(void)
 
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
-  
+
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & 0x10) || fifoCount == 1024)
   {
@@ -176,11 +194,11 @@ static bool boSensorRead(void)
     // track FIFO count here in case there is > 1 packet available
     // (this lets us immediately read more without waiting for an interrupt)
     fifoCount -= packetSize;
-    
+
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    
+
     Wire.beginTransmission(0x68);
     Wire.write(0x3B); // Start with register 0x3B (ACCEL_XOUT_H)
     Wire.endTransmission(false);
@@ -191,87 +209,82 @@ static bool boSensorRead(void)
     floAccY = (Wire.read() << 8 | Wire.read()) / 1638.40; // Y-axis value
     floAccZ = (Wire.read() << 8 | Wire.read()) / 1638.40; // Z-axis value
 
-   boSensReadAcc = true;
+    boSensReadAcc = true;
   }
-
   return boSensReadAcc;
 }
 
 static void vCANRead(void)
 {
-  if(CAN_MSGAVAIL == CAN.checkReceive())
+  
 
+    if(CAN_MSGAVAIL == CAN.checkReceive())
     {
-      u8SoC = 0;
-      u16PackVolt = 0;
-      u8Temperature = 0;
-      s16PackCurr = 0;
-      CAN.readMsgBuf(&u8CAN_len, CAN_buf);
-
-      // unsigned long canId = CAN.getCanId();  
-
-      u8SoC  = CAN_buf[0] >>1;
-     
-     u16PackVolt |= CAN_buf[1]<<8;
-     u16PackVolt |= CAN_buf[2];
-     floPackVoltage = u16PackVolt/1000;
-     
-     u8Temperature = CAN_buf[4];  
-    
-      s16PackCurr |= CAN_buf[5]<<8;
-      s16PackCurr |= CAN_buf[6];
-     floPackCurrent =  s16PackCurr/1000;
-
+        CAN.readMsgBuf(&len, bufin);
+        unsigned long canId = CAN.getCanId();
+       
     }
+    //Filling the union with the given message
+    uCAN_Msg.u64Message = 0U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[0] << 56U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[1] << 48U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[2] << 40U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[3] << 32U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[4] << 24U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[5] << 16U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[6] <<  8U;
+    uCAN_Msg.u64Message |= ( uint64_t ) bufin[7];
+      
 }
 
 static void vSendDatasBLE(void)
 {
   // Add values in the Json document
-    jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
-    jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
-    jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
+  jsonDoc["tilt"]["x"] = ypr[1] * 180 / M_PI;
+  jsonDoc["tilt"]["y"] = ypr[2] * 180 / M_PI;
+  jsonDoc["tilt"]["z"] = ypr[0] * 180 / M_PI;
 
-    jsonDoc["acceleration"]["x"] = floAccX;
-    jsonDoc["acceleration"]["y"] = floAccY;
-    jsonDoc["acceleration"]["z"] = floAccZ;
+  jsonDoc["acceleration"]["x"] = floAccX / 9.81;
+  jsonDoc["acceleration"]["y"] = floAccY / 9.81;
+  jsonDoc["acceleration"]["z"] = floAccZ / 9.81;
 
-    //jsonDoc["compass"]["x"] = 123;//unused
-   // jsonDoc["compass"]["y"] = 456;//unused
-   // jsonDoc["compass"]["z"] = 789;//unused
+  // jsonDoc["compass"]["x"] = 123;//unused
+  // jsonDoc["compass"]["y"] = 456;//unused
+  // jsonDoc["compass"]["z"] = 789;//unused
 
-    //jsonDoc["motor"]["RpM"] = 123;//unused
-   // jsonDoc["motor"]["temp"] = 123;//unused
+  // jsonDoc["motor"]["RpM"] = 123;//unused
+  // jsonDoc["motor"]["temp"] = 123;//unused
 
-  // jsonDoc["battery"]["Package current"] = floatPackCurrent; //unused
-  //  jsonDoc["battery"]["Package voltage"] = floatPackVoltage;//unused
-  //  jsonDoc["battery"]["Package SoC"] = SoC;//unused
-   // jsonDoc["battery"]["Temperature"] = temperature;//unused
-   // jsonDoc["error"]["source"] = "";//unused
-    //jsonDoc["error"]["message"] = "";//unused
+   jsonDoc["battery"]["Package current"] = uCAN_Msg.cFRAMES.u16PackCurrent/10.0;
+   jsonDoc["battery"]["Package voltage"] = uCAN_Msg.cFRAMES.u16HighCellVoltage/10000.0;
+   jsonDoc["battery"]["Package SoC"] =uCAN_Msg.cFRAMES.u8SoC/2.0;
+   jsonDoc["battery"]["Temperature"] = uCAN_Msg.cFRAMES.u8HighTemp;
+  // jsonDoc["error"]["source"] = "";//unused
+  //jsonDoc["error"]["message"] = "";//unused
 
-    // Add an array.
-   // JsonArray data = jsonDoc.createNestedArray("extra temps");//unused
-   // data.add(12);//unused
-   // data.add(34);//unused
-   // data.add(56);//unused
-   
-    //Serialize Json to the serial port
-    serializeJson(jsonDoc, Serial); //or mySerial
+  
+    //Serial.println(uCAN_Msg.cFRAMES.u16LowCellVoltage/10000.0);
+       
+  // Add an array.
+  // JsonArray data = jsonDoc.createNestedArray("extra temps");//unused
+  // data.add(12);//unused
+  // data.add(34);//unused
+  // data.add(56);//unused
+
+  //Serialize Json to the serial port
+  serializeJson(jsonDoc, BLE_Serial);
 }
 
 void loop()
 {
 
-  if(boSensorRead() == true)
+  if (boSensorRead() == true)
   {
 
-  //vCANRead();
-  vSendDatasBLE();
-   Serial.println();
-   delay(1000); 
-    
+    vCANRead();
+    vSendDatasBLE();
+    delay(1000);
+
   }
-
-
+ 
 }
