@@ -80,7 +80,6 @@ static uint8_t bufin[8];
 //  Hozzáadtam a low cell voltage-et, basztam kiszámolni az új méretet, úgyhogy csak beszoroztam az egészet kettővel. -Z
 // Legyen az 3 - @Barrow099
 static const int jsonSize = 3 * (JSON_ARRAY_SIZE(3) + 2 * JSON_OBJECT_SIZE(2) + 2 * JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(6));
-static char jsonData[jsonSize];
 // Allocate the JSON document
 StaticJsonDocument<jsonSize> jsonDoc;
 
